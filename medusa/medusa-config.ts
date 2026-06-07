@@ -16,16 +16,12 @@ module.exports = defineConfig({
       authCors: process.env.AUTH_CORS!,
       jwtSecret: process.env.JWT_SECRET || "supersecret",
       cookieSecret: process.env.COOKIE_SECRET || "supersecret",
-      cookieOptions: {
-        secure: false,
-        sameSite: "lax",
-      },
     },
   },
 
   admin: {
     disable: process.env.DISABLE_ADMIN === "true",
-    backendUrl: process.env.BACKEND_URL,
+    // backendUrl: process.env.BACKEND_URL,
   },
 
   modules: [

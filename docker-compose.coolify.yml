@@ -1,14 +1,10 @@
-# Plug-and-play Medusa v2 stack
-# Usage:
-#   1. Place this file in the repo root (next to the ./medusa folder)
-#   2. Replace medusa/Dockerfile with the provided patched Dockerfile
-#      (removes the build-time migration so the image builds without a live DB)
-#   3. (optional) copy .env.example -> .env and edit secrets/CORS
-#   4. docker compose up -d --build
+# Medusa v2 stack for Coolify (Docker Compose build pack)
+# Dashboard is published on host port 7018 -> reach it at http://<server-ip>:7018/app
+# Health check is intentionally OFF so a failed boot does not abort the deploy;
+# that keeps the container alive so its logs are readable in the Coolify Logs tab.
+# Re-enable the health check (bottom of medusa-server) once it boots cleanly.
 #
 # Services: postgres, redis, medusa-server (admin + API), medusa-worker
-# Admin UI:  http://localhost:7018/app
-# Store API: http://localhost:7018/store
 
 # Shared env for both server and worker (DRY via YAML anchor)
 x-medusa-env: &medusa-env
@@ -69,12 +65,14 @@ services:
     # migrations.sh runs `medusa db:migrate` (server only), then execs the CMD
     entrypoint: ["./migrations.sh"]
     command: ["yarn", "run", "start"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 90s
+    # --- DEBUG: healthcheck disabled so the deploy completes and the container
+    #     stays up for log inspection. Re-enable once it boots cleanly.
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 20
+    #   start_period: 180s
 
   medusa-worker:
     build:
@@ -85,9 +83,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # wait until the server has finished migrating + is healthy
+      # server has no healthcheck during debug; start after it launches
       medusa-server:
-        condition: service_healthy
+        condition: service_started
     environment:
       <<: *medusa-env
       WORKER_MODE: worker

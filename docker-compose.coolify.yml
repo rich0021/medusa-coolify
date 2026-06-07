@@ -1,0 +1,110 @@
+# Medusa v2 — Coolify "Docker Compose" deployment
+# ------------------------------------------------
+# In Coolify: New Resource -> Docker Compose (or Public/Private Git repo,
+# build pack = Docker Compose) -> set the Compose file path to this file.
+# Use the PATCHED Dockerfile (runtime migrations) at medusa/Dockerfile.
+#
+# Coolify auto-fills the SERVICE_* magic variables on first deploy:
+#   - SERVICE_FQDN_MEDUSA_9000  -> generates a domain and routes :9000 to it
+#   - SERVICE_URL_MEDUSA_9000   -> full https URL of that domain
+#   - SERVICE_PASSWORD_POSTGRES -> generated DB password (stable, reused)
+#   - SERVICE_BASE64_64_COOKIE / _JWT -> generated secrets (stable, reused)
+# All of these appear in the Environment Variables tab afterwards and can be edited.
+
+services:
+  postgres:
+    image: postgis/postgis:16-master
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medusa
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: medusa
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medusa -d medusa"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # The server: serves the admin dashboard + store/admin API. This is the
+  # service Coolify exposes to the internet (port 9000).
+  medusa:
+    build:
+      context: ./medusa
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # --- Coolify routing: declaring this exposes :9000 on a generated domain
+      - SERVICE_FQDN_MEDUSA_9000
+      # --- connections (internal Docker network, service names as hosts)
+      - DATABASE_URL=postgres://medusa:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/medusa
+      - REDIS_URL=redis://redis:6379
+      # --- secrets (generated once by Coolify, reused by the worker too)
+      - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE}
+      - JWT_SECRET=${SERVICE_BASE64_64_JWT}
+      # --- backend URL = the domain Coolify assigned
+      - BACKEND_URL=${SERVICE_URL_MEDUSA_9000}
+      # --- CORS: defaults to the backend domain. Add your storefront domain
+      #     here (comma-separated) once you have one, e.g.
+      #     STORE_CORS=https://shop.example.com
+      - STORE_CORS=${SERVICE_URL_MEDUSA_9000}
+      - ADMIN_CORS=${SERVICE_URL_MEDUSA_9000}
+      - AUTH_CORS=${SERVICE_URL_MEDUSA_9000}
+      - WORKER_MODE=server
+      - DISABLE_ADMIN=false
+      - PORT=9000
+    entrypoint: ["./migrations.sh"] # runs `medusa db:migrate`, then the CMD
+    command: ["yarn", "run", "start"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  # The worker: background jobs / subscribers. No public domain, no migrations.
+  worker:
+    build:
+      context: ./medusa
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      medusa:
+        condition: service_healthy # wait until migrations are done
+    environment:
+      - DATABASE_URL=postgres://medusa:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/medusa
+      - REDIS_URL=redis://redis:6379
+      - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE}
+      - JWT_SECRET=${SERVICE_BASE64_64_JWT}
+      - BACKEND_URL=${SERVICE_URL_MEDUSA_9000}
+      - STORE_CORS=${SERVICE_URL_MEDUSA_9000}
+      - ADMIN_CORS=${SERVICE_URL_MEDUSA_9000}
+      - AUTH_CORS=${SERVICE_URL_MEDUSA_9000}
+      - WORKER_MODE=worker
+      - DISABLE_ADMIN=true
+      - PORT=9000
+    entrypoint: ["./migrations.sh"] # WORKER_MODE=worker -> skips migrations
+    command: ["yarn", "run", "start"]
+
+volumes:
+  database:
+  redis_data:

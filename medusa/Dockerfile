@@ -1,8 +1,13 @@
-FROM node:23 as builder
+# Drop-in replacement for medusa/Dockerfile
+# Difference from the original: the build-time migration step is removed.
+# Migrations now run at container startup via migrations.sh (see docker-compose.yml),
+# so the image can be built without a live database.
+
+FROM node:23 AS builder
 
 WORKDIR /app/medusa
 
-COPY . . 
+COPY . .
 
 RUN rm -rf node_modules
 
@@ -15,29 +20,9 @@ RUN yarn run build
 
 FROM node:23
 
-# Bug https://github.com/coollabsio/coolify/issues/1930
-ARG COOKIE_SECRET
-ARG JWT_SECRET
-ARG STORE_CORS
-ARG ADMIN_CORS
-ARG AUTH_CORS
-ARG DISABLE_ADMIN
-ARG WORKER_MODE
-ARG PORT
-ARG DATABASE_URL
-ARG REDIS_URL
-ARG BACKEND_URL
-
-RUN echo "${PORT}"
-
 WORKDIR /app/medusa
 
 RUN mkdir .medusa
-
-# COPY package*.json .yarnrc.yml yarn.lock ./ 
-
-# COPY medusa-config.ts .
-# COPY tsconfig.json .
 
 RUN apt-get update && apt-get install -y python3 python3-pip python-is-python3
 
@@ -47,12 +32,9 @@ WORKDIR /app/medusa/.medusa/server
 
 RUN yarn install --production
 
-
-# RUN medusa migrations run 
-COPY migrations.sh /app/medusa/.medusa/server/migrations.sh
-RUN chmod +x /app/medusa/.medusa/server/migrations.sh
-RUN /app/medusa/.medusa/server/migrations.sh
-
-RUN rm /app/medusa/.medusa/server/migrations.sh
+# Keep migrations.sh in the image; it is used as the container entrypoint.
+# It runs `medusa db:migrate` only when WORKER_MODE != worker, then execs the CMD.
+COPY migrations.sh ./migrations.sh
+RUN chmod +x ./migrations.sh
 
 CMD ["yarn", "run", "start"]

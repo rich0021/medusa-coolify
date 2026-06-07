@@ -6,7 +6,8 @@
 #
 # Coolify auto-fills the SERVICE_* magic variables on first deploy:
 #   - SERVICE_FQDN_MEDUSA_9000  -> generates a domain and routes :9000 to it
-#   - SERVICE_URL_MEDUSA_9000   -> full https URL of that domain
+#   - SERVICE_URL_MEDUSA        -> full URL of that domain (generic = reliable;
+#                                 the port-specific _9000 variant is NOT always generated)
 #   - SERVICE_PASSWORD_POSTGRES -> generated DB password (stable, reused)
 #   - SERVICE_BASE64_64_COOKIE / _JWT -> generated secrets (stable, reused)
 # All of these appear in the Environment Variables tab afterwards and can be edited.
@@ -59,24 +60,26 @@ services:
       - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE}
       - JWT_SECRET=${SERVICE_BASE64_64_JWT}
       # --- backend URL = the domain Coolify assigned
-      - BACKEND_URL=${SERVICE_URL_MEDUSA_9000}
+      - BACKEND_URL=${SERVICE_URL_MEDUSA}
       # --- CORS: defaults to the backend domain. Add your storefront domain
       #     here (comma-separated) once you have one, e.g.
       #     STORE_CORS=https://shop.example.com
-      - STORE_CORS=${SERVICE_URL_MEDUSA_9000}
-      - ADMIN_CORS=${SERVICE_URL_MEDUSA_9000}
-      - AUTH_CORS=${SERVICE_URL_MEDUSA_9000}
+      - STORE_CORS=${SERVICE_URL_MEDUSA}
+      - ADMIN_CORS=${SERVICE_URL_MEDUSA}
+      - AUTH_CORS=${SERVICE_URL_MEDUSA}
       - WORKER_MODE=server
       - DISABLE_ADMIN=false
       - PORT=9000
     entrypoint: ["./migrations.sh"] # runs `medusa db:migrate`, then the CMD
     command: ["yarn", "run", "start"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 120s
+    # --- DEBUG: healthcheck disabled so the container stays up and you can read
+    #     its logs. Re-enable once the app boots cleanly (see block below).
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 20
+    #   start_period: 180s
 
   # The worker: background jobs / subscribers. No public domain, no migrations.
   worker:
@@ -89,16 +92,16 @@ services:
       redis:
         condition: service_healthy
       medusa:
-        condition: service_healthy # wait until migrations are done
+        condition: service_started # was service_healthy; relaxed for debugging
     environment:
       - DATABASE_URL=postgres://medusa:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/medusa
       - REDIS_URL=redis://redis:6379
       - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE}
       - JWT_SECRET=${SERVICE_BASE64_64_JWT}
-      - BACKEND_URL=${SERVICE_URL_MEDUSA_9000}
-      - STORE_CORS=${SERVICE_URL_MEDUSA_9000}
-      - ADMIN_CORS=${SERVICE_URL_MEDUSA_9000}
-      - AUTH_CORS=${SERVICE_URL_MEDUSA_9000}
+      - BACKEND_URL=${SERVICE_URL_MEDUSA}
+      - STORE_CORS=${SERVICE_URL_MEDUSA}
+      - ADMIN_CORS=${SERVICE_URL_MEDUSA}
+      - AUTH_CORS=${SERVICE_URL_MEDUSA}
       - WORKER_MODE=worker
       - DISABLE_ADMIN=true
       - PORT=9000

@@ -3,9 +3,11 @@ import { loadEnv, defineConfig } from "@medusajs/framework/utils";
 loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
 module.exports = defineConfig({
-
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
+    databaseDriverOptions: {
+      connection: { ssl: false },
+    },
     redisUrl: process.env.REDIS_URL,
     workerMode: process.env.WORKER_MODE as "shared" | "worker" | "server",
     http: {
@@ -47,6 +49,4 @@ module.exports = defineConfig({
       },
     },
   ],
-
 });
-

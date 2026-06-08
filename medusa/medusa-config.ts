@@ -8,6 +8,10 @@ module.exports = defineConfig({
     databaseDriverOptions: {
       connection: { ssl: false },
     },
+    cookieOptions: {
+      sameSite: "lax",
+      secure: false,
+    },
     redisUrl: process.env.REDIS_URL,
     workerMode: process.env.WORKER_MODE as "shared" | "worker" | "server",
     http: {
